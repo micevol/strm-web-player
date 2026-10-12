@@ -5,22 +5,28 @@ services:
     container_name: strm-web-player
     restart: unless-stopped
     ports:
-      # host port 14000 -> container port 3000
-      - "14000:3000"
+      # host port -> container port（默认 14000，可通过 .env 的 HOST_PORT 修改）
+      - "${HOST_PORT:-14000}:3000"
     environment:
-      # STRM 根目录（容器内路径，实际映射见下方 volumes）
+      # STRM 根目录（容器内路径，实际挂载见下方 volumes）
       - STRM_DIR=/data/strm
       - PORT=3000
-      # 重要：改成你自己的强随机密钥，更换后会失效所有已登录会话
-      - JWT_SECRET=${JWT_SECRET:-please-change-me-to-a-long-random-secret}
-      # 首次启动自动创建的管理员账号（格式 用户名:密码）
+      # 重要：改成你自己的强随机密钥，更换后会失效所有已登录会话（见 .env 的 JWT_SECRET）
+      - JWT_SECRET=${JWT_SECRET}
+      # 首次启动自动创建的管理员账号（格式 用户名:密码，见 .env 的 SEED_ADMIN）
       - SEED_ADMIN=${SEED_ADMIN:-admin:admin123}
       # 是否允许网页自助注册账号（true=开启，false=关闭）
-      - ALLOW_REGISTER=true
-      # strm 内允许播放的远程域名，留空表示允许所有（*）
-      - ALLOWED_HOSTS=*
+      - ALLOW_REGISTER=${ALLOW_REGISTER:-true}
+      # strm 内允许播放的远程域名白名单，留空表示允许所有（*）
+      - ALLOWED_HOSTS=${ALLOWED_HOSTS:-*}
     volumes:
-      # TODO: 改成你的 strm 文件所在目录（只读挂载即可；若需回写可去掉 :ro）
-      - /path/to/your/strm:/data/strm:ro
+      # 你的 strm 文件所在目录（容器内映射）。只读挂载即可，若需回写去掉 :ro
+      - ${STRM_HOST_PATH:-./strm}:/data/strm:ro
       # 持久化账号数据，容器重建后账号不丢失
       - ./data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/api/auth/me"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s

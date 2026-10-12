@@ -38,20 +38,23 @@ cd strm-web-player
 
 编辑 `docker-compose.yml`,把 strm 目录路径改成你的实际路径:
 
-```yaml
-volumes:
-  - /path/to/your/strm:/data/strm:ro
+所有可配置项统一放在 **`.env`**(从 `.env.example` 复制而来):
+
+```bash
+cp .env.example .env
+vim .env      # 或 nano .env
 ```
 
-（`ro` 表示只读挂载;若你的网盘工具会改动这些文件,去掉 `:ro` 即可。）
+其中三项必改:
 
-同时修改一条环境变量(必改,安全起见):
-
-```yaml
-- JWT_SECRET=<一个足够长的随机字符串>
+```env
+STRM_HOST_PATH=/media/我的网盘影视/strm   # 你的 strm 文件所在目录(宿主机路径)
+JWT_SECRET=一串足够长的随机字符串           # 生产环境必改(生成: openssl rand -base64 48)
+SEED_ADMIN=admin:admin123                # 首次启动的管理员账号,务必换掉
 ```
 
-> 建议同时修改首次启动的默认管理员账号 `SEED_ADMIN=admin:admin123`,生产环境务必换掉。
+> `STRM_HOST_PATH` 以只读方式挂载进容器;若你的网盘工具会改写这些文件,可在
+> `docker-compose.yml` 中把该 volume 的 `:ro` 去掉。
 
 ### 3. 启动
 
