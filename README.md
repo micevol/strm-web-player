@@ -30,7 +30,7 @@
 ### 1. 下载项目
 
 ```bash
-git clone https://github.com/<你的账号>/strm-web-player.git
+git clone https://github.com/micevol/strm-web-player.git
 cd strm-web-player
 ```
 
