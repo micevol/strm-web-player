@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>登录 · STRM Web Player</title>
+  <link rel="stylesheet" href="/css/style.css" />
+</head>
+<body>
+  <div class="bg-fx"></div>
+  <div class="auth-wrap">
+    <section class="auth-hero">
+      <div class="brand">
+        <div class="brand-mark">▶</div>
+        <div class="brand-name"><em>STRM</em> Web Player</div>
+      </div>
+      <div class="hero-title">极简影视播放平台</div>
+      <div class="hero-tagline" style="margin-top:18px;">
+        Web 直读 <em>.strm</em> 资源流，智能感知库内更新，一处登录、随处观影。
+      </div>
+      <div class="hero-tagline" style="margin-top:8px;font-size:13px;color:var(--text-faint);">
+        项目开源 · Docker 一键部署
+      </div>
+      <div class="hero-meta">
+        <span class="chip">STRM 直读</span>
+        <span class="chip">自动刷新</span>
+        <span class="chip">账号安全</span>
+        <span class="chip">HTTP 流式</span>
+      </div>
+    </section>
+
+    <section class="auth-card">
+      <div class="card-panel">
+        <div class="auth-tabs">
+          <button class="auth-tab active" data-tab="login">登录</button>
+          <button class="auth-tab" data-tab="register">注册</button>
+        </div>
+
+        <form class="auth-form" id="loginForm" autocomplete="off">
+          <div>
+            <label>用户名</label>
+            <input class="input" name="username" placeholder="请输入用户名" required />
+          </div>
+          <div>
+            <label>密码</label>
+            <input class="input" name="password" type="password" placeholder="请输入密码" required />
+          </div>
+          <div class="auth-error" id="loginErr"></div>
+          <button class="btn btn-primary" type="submit" id="loginBtn">登 录</button>
+        </form>
+
+        <form class="auth-form" id="registerForm" autocomplete="off" style="display:none;">
+          <div>
+            <label>用户名</label>
+            <input class="input" name="username" placeholder="2-32 位字母/数字/下划线" required />
+          </div>
+          <div>
+            <label>密码</label>
+            <input class="input" name="password" type="password" placeholder="至少 6 位" required />
+          </div>
+          <div>
+            <label>确认密码</label>
+            <input class="input" name="confirm" type="password" placeholder="再次输入密码" required />
+          </div>
+          <div class="auth-error" id="regErr"></div>
+          <button class="btn btn-primary" type="submit" id="regBtn">创建账号</button>
+        </form>
+
+        <div class="auth-foot">STRM Web Player · 自托管媒体播放服务</div>
+      </div>
+    </section>
+  </div>
+
+  <script src="/js/auth.js"></script>
+</body>
+</html>
