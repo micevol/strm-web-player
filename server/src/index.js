@@ -1,10 +1,12 @@
 'use strict';
 const path = require('path');
+const fs = require('fs');
 const express = require('express');
 const config = require('./config');
 const files = require('./files');
 const watcher = require('./watcher');
 const strm = require('./strm');
+const progress = require('./progress');
 const { authRouter, requireAuth } = require('./auth');
 
 const app = express();
@@ -37,6 +39,64 @@ app.get('/api/me', requireAuth, (req, res) => {
 // Browse the library tree
 app.get('/api/browse', requireAuth, (req, res) => {
   res.json({ ok: true, tree: files.getTree() });
+});
+
+// ---- playback progress (per user) ----
+app.get('/api/progress', requireAuth, (req, res) => {
+  if (req.query.path) {
+    const item = progress.getOne(req.user.username, String(req.query.path));
+    return res.json({ ok: true, item: item || null });
+  }
+  res.json({ ok: true, progress: progress.getForUser(req.user.username) });
+});
+
+app.put('/api/progress', requireAuth, (req, res) => {
+  const { path: rel, time } = req.body || {};
+  if (typeof rel !== 'string' || !rel) {
+    return res.status(400).json({ error: '缺少 path' });
+  }
+  const item = progress.set(req.user.username, rel, time);
+  res.json({ ok: true, item });
+});
+
+app.delete('/api/progress', requireAuth, (req, res) => {
+  const rel = req.query.path || (req.body && req.body.path);
+  if (rel) progress.clear(req.user.username, String(rel));
+  res.json({ ok: true });
+});
+
+// ---- subtitles (same-name sidecar files, served as WebVTT for <track>) ----
+const SUB_MIME = {
+  '.vtt': 'text/vtt',
+  '.srt': 'text/vtt',
+  '.ass': 'text/plain',
+  '.ssa': 'text/plain',
+  '.smi': 'text/plain',
+};
+function toWebVTT(content, ext) {
+  if (ext !== '.vtt' && ext !== '.srt') return content;
+  let text = content.replace(/^\uFEFF/, '');
+  if (!/^WEBVTT/.test(text)) {
+    text = 'WEBVTT\n' + text.replace(/\r?\n/g, '\n');
+  }
+  return text;
+}
+
+app.get('/api/subtitle/*', requireAuth, (req, res) => {
+  const rel = req.params[0] || '';
+  const abs = path.join(config.strmDir, rel);
+  if (!abs.startsWith(path.resolve(config.strmDir))) {
+    return res.status(403).json({ error: '路径越权' });
+  }
+  const ext = path.extname(abs).toLowerCase();
+  if (!SUB_MIME[ext]) return res.status(400).json({ error: '不支持的字幕格式' });
+  if (!fs.existsSync(abs)) return res.status(404).json({ error: '字幕不存在' });
+  fs.readFile(abs, 'utf8', (err, content) => {
+    if (err) return res.status(500).json({ error: '读取失败' });
+    res.setHeader('content-type', SUB_MIME[ext]);
+    res.setHeader('cache-control', 'no-store');
+    res.send(toWebVTT(content, ext));
+  });
 });
 
 // Stream one strm (proxy / rewritten HLS)

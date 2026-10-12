@@ -58,9 +58,44 @@ function buildNode(absPath, relPath, isRoot = false) {
       name: path.basename(absPath),
       path: relPath,
       ext: path.extname(absPath),
+      subtitles: findSubtitles(absPath, relPath), // same-basename .srt/.vtt/.ass/...
     };
   }
   return null;
+}
+
+const SUB_EXTS = ['.srt', '.vtt', '.ass', '.ssa', '.smi'];
+
+/** Find subtitle files next to a strm (same stem, e.g. movie.strm + movie.srt).
+ *  Also matches when the strm keeps a media suffix (movie.mp4.strm) and the
+ *  subtitle only has the movie name (movie.srt) or full name (movie.mp4.srt). */
+const MEDIA_EXTS = ['.mp4', '.mkv', '.avi', '.ts', '.m2ts', '.mov', '.webm', '.flv', '.wmv', '.rmvb', '.mpg', '.mpeg'];
+function findSubtitles(fileAbs, fileRel) {
+  const dirAbs = path.dirname(fileAbs);
+  const dirRel = path.dirname(fileRel); // posix-style already (leading '/')
+  const base = path.basename(fileAbs);
+  const stem = base.replace(/\.strm$/i, '');
+  // also derive the "media-less" stem: movie.mp4 -> movie
+  let stem2 = stem;
+  const me = MEDIA_EXTS.find((e) => stem.toLowerCase().endsWith(e));
+  if (me) stem2 = stem.slice(0, -me.length);
+  const stems = new Set([stem, stem2].filter(Boolean));
+  const out = [];
+  let entries;
+  try {
+    entries = fs.readdirSync(dirAbs, { withFileTypes: true });
+  } catch (e) {
+    return out;
+  }
+  for (const en of entries) {
+    if (!en.isFile()) continue;
+    const ext = path.extname(en.name).toLowerCase();
+    if (!SUB_EXTS.includes(ext)) continue;
+    const bare = path.basename(en.name, ext);
+    const match = [...stems].some((s) => bare === s || bare === `${s}.zh` || bare === `${s}.zh_CN` || bare === `${s}.chs`);
+    if (match) out.push((dirRel === '/' ? '' : dirRel) + '/' + en.name);
+  }
+  return out.sort();
 }
 
 function recompute() {

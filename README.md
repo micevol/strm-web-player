@@ -21,6 +21,8 @@
 | 🕵️ 自动刷新 | chokidar 监听 strm 目录的增删改，SSE 实时推送到浏览器，新增影片/改动即时可见 |
 | 🔐 账号认证 | 用户名 + 密码登录，bcrypt 加密密码，JWT 会话；开放自助注册（可关闭） |
 | 📂 目录树 | 左侧影视库目录树 + 缩略图网格浏览 |
+| ⏯️ 播放进度记忆 | 按账号保存每个视频的播放进度，再次播放自动续播；播放完成自动清除 |
+| 🈂️ 字幕支持 | 自动识别同名 `.srt/.vtt/.ass/.ssa/.smi` 字幕文件；也支持手动上传本地字幕 |
 | 🐳 Docker | 一键 `docker compose up -d` 部署，自动重启 |
 
 ---
@@ -84,6 +86,7 @@ docker compose up -d --build
 | `ALLOWED_HOSTS` | `*` | strm 内允许播放的远程域名白名单,如 `aliyundrive.com,example.com` |
 | `POLL_INTERVAL` | `5000` | 文件监听回退轮询间隔(ms) |
 | `UPSTREAM_TIMEOUT` | `30000` | 上游视频源请求超时(ms) |
+| `PROGRESS_DB_PATH` | `/data/progress.json` | 播放进度数据存储位置 |
 
 ---
 
@@ -100,6 +103,30 @@ https://xxx.drive.com/path/stream.m3u8
 ```
 
 项目会自动识别并播放任意 `.strm` 文件,目录结构即影视库的目录结构。
+
+---
+
+## 🈂️ 字幕
+
+在 strm 文件**同目录**放置同名的字幕文件,播放时播放器右上角「字幕」菜单会自动列出并加载:
+
+| 文件 | 与 strm 的对应关系 |
+| ---- | ---- |
+| `movie.srt` / `movie.vtt` / `movie.ass` … | 与 `movie.strm` 同名 |
+| `movie.zh.srt` / `movie.zh_CN.vtt` … | 带语言后缀,同样会被识别 |
+| `movie.mp4.srt` | strm 保留了媒体后缀(movie.mp4.strm)时也可匹配 |
+
+支持的扩展:`srt`、`vtt`、`ass`、`ssa`、`smi`。`.srt` 会自动转为 WebVTT 供浏览器 `<track>` 使用。
+
+也支持在播放器里**手动上传本地字幕文件**(仅当次播放有效)。
+
+---
+
+## ⏯️ 播放进度记忆
+
+- 播放过程中每 5 秒自动保存一次当前位置(按账号、按视频独立记录)
+- 再次打开同一视频时自动从上次位置**续播**
+- 视频**播放完成**后自动清除该条进度
 
 ---
 
@@ -127,9 +154,10 @@ strm-web-player/
 │       ├── index.js   # Express 入口
 │       ├── auth.js    # 登录 / 注册 / JWT
 │       ├── db.js      # 账号存储(bcrypt 加密)
-│       ├── files.js   # 目录树索引
+│       ├── files.js   # 目录树索引 + 字幕索引
 │       ├── watcher.js # 更新检测(chokidar)
 │       ├── strm.js    # strm 解析 + 流式播放代理
+│       ├── progress.js# 播放进度存储
 │       └── config.js  # 环境变量配置
 └── sample/            # 示例 strm 文件
 ```

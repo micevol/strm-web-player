@@ -22,6 +22,9 @@ module.exports = {
   // File that stores registered user accounts
   userDbPath: process.env.USER_DB_PATH || path.join('/data', 'users.json'),
 
+  // File that stores per-user playback progress
+  progressPath: process.env.PROGRESS_DB_PATH || path.join('/data', 'progress.json'),
+
   // Seed a default admin on first boot (format "username:password")
   seedAdmin: process.env.SEED_ADMIN || '',
 

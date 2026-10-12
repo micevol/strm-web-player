@@ -14,6 +14,11 @@
   let playingSrc = null;
   let hls = null;
 
+  // subtitle + resume state
+  let subTracks = []; // {label, el}
+  let resumeTarget = null; // seconds to seek to on load
+  let resumePending = false;
+
   /* ---------- auth guard ---------- */
   async function ensureAuth() {
     try {
@@ -174,6 +179,177 @@
     }
     const host = $('#videoHost');
     host.innerHTML = '';
+    subTracks = [];
+    resumeTarget = null;
+    resumePending = false;
+    $('#subMenu').innerHTML = '';
+    $('#subTools').style.display = 'none';
+  }
+
+  /* ---------- subtitle helpers ---------- */
+  function toVttText(text, ext) {
+    let t = text.replace(/^\uFEFF/, '').replace(/\r\n?/g, '\n');
+    if (!/^WEBVTT/.test(t)) t = 'WEBVTT\n' + t;
+    return t;
+  }
+
+  function clearSubMenu() {
+    $('#subMenu').innerHTML = '';
+  }
+
+  function addTrackLabel(item) {
+    const div = document.createElement('div');
+    div.className = 'sub-item' + (item.live ? ' active' : '');
+    div.dataset.idx = item.idx;
+    div.innerHTML = '<span class="sub-flag">' + (item.local ? '本地上传' : (item.lang || 'sidecar')) + '</span><span>' + esc(item.label) + '</span>';
+    $('#subMenu').appendChild(div);
+  }
+
+  function refreshSubMenu(video) {
+    clearSubMenu();
+    const none = $('#subMenu');
+    const off = document.createElement('div');
+    off.className = 'sub-item' + (subTracks.length === 0 || !subTracks.some((t) => t.el.track && t.el.track.mode === 'showing') ? ' active' : '');
+    off.dataset.idx = -1;
+    off.innerHTML = '<span class="sub-flag">-</span><span>关闭字幕</span>';
+    none.appendChild(off);
+    subTracks.forEach((t, i) => {
+      const live = t.el.track && t.el.track.mode === 'showing';
+      addTrackLabel({ idx: i, label: t.label, local: t.local, lang: t.lang, live });
+    });
+  }
+
+  function initSubMenu(video) {
+    const btn = $('#subMenuBtn');
+    const menu = $('#subMenu');
+    btn.onclick = (ev) => {
+      ev.stopPropagation();
+      menu.classList.toggle('open');
+      refreshSubMenu(video);
+    };
+    document.addEventListener('click', (ev) => {
+      if (!menu.contains(ev.target)) menu.classList.remove('open');
+    });
+    menu.onclick = (ev) => {
+      const it = ev.target.closest('.sub-item');
+      if (!it) return;
+      const idx = parseInt(it.dataset.idx, 10);
+      selectSubtitle(video, idx);
+      menu.classList.remove('open');
+    };
+    $('#subFile').onchange = (ev) => {
+      const f = ev.target.files && ev.target.files[0];
+      if (!f) return;
+      const ext = (f.name.split('.').pop() || '').toLowerCase();
+      if (['srt', 'vtt', 'ass', 'ssa', 'smi'].indexOf(ext) === -1) {
+        toast('不支持的字幕格式：' + ext, true);
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = () => {
+        const text = toVttText(String(reader.result || ''), ext);
+        const blob = new Blob([text], { type: 'text/vtt' });
+        const url = URL.createObjectURL(blob);
+        const t = document.createElement('track');
+        t.kind = 'subtitles';
+        t.label = f.name;
+        t.default = true;
+        video.appendChild(t);
+        t.track.mode = 'showing';
+        subTracks.push({ label: f.name, el: t, local: true });
+        refreshSubMenu(video);
+        toast('已加载本地字幕：' + f.name);
+      };
+      reader.readAsText(f);
+      ev.target.value = '';
+    };
+    $('#subFile').onclick = (ev) => ev.stopPropagation();
+  }
+
+  function selectSubtitle(video, idx) {
+    if (idx === -1) {
+      subTracks.forEach((t) => { if (t.el.track) t.el.track.mode = 'disabled'; });
+    } else if (subTracks[idx]) {
+      subTracks.forEach((t) => { if (t.el.track) t.el.track.mode = 'disabled'; });
+      const t = subTracks[idx];
+      if (t.el.track) t.el.track.mode = 'showing';
+      else t.el.addEventListener('load', () => (t.el.track.mode = 'showing'));
+    }
+    refreshSubMenu(video);
+  }
+
+  /* ---------- resume memory ---------- */
+  function saveProgress(rel, time) {
+    if (!rel) return;
+    try {
+      fetch('/api/progress', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ path: rel, time: Math.max(0, Math.round(time || 0)) }),
+      }).catch(() => {});
+    } catch (e) { /* ignore */ }
+  }
+
+  function clearProgress(rel) {
+    if (!rel) return;
+    try {
+      fetch('/api/progress', {
+        method: 'DELETE',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ path: rel }),
+      }).catch(() => {});
+    } catch (e) { /* ignore */ }
+  }
+
+  function pad(n) { return String(n).padStart(2, '0'); }
+  function fmtTime(sec) {
+    const s = Math.max(0, Math.floor(sec || 0));
+    const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), ss = s % 60;
+    return h ? h + ':' + pad(m) + ':' + pad(ss) : m + ':' + pad(ss);
+  }
+
+  function fetchResume(rel, video) {
+    resumeTarget = null;
+    resumePending = false;
+    fetch('/api/progress?path=' + encodeURIComponent(rel))
+      .then((r) => r.json())
+      .then((d) => {
+        if (d.item && d.item.time > 15) {
+          resumeTarget = d.item.time;
+          resumePending = true;
+          const seek = () => {
+            const dur = (video.duration && isFinite(video.duration)) ? video.duration : Infinity;
+            if (resumePending && isFinite(dur) && resumeTarget < dur - 5) {
+              try { video.currentTime = resumeTarget; toast('已续播至 ' + fmtTime(resumeTarget)); } catch (e) {}
+            }
+            resumePending = false;
+          };
+          if (video.readyState >= 1) seek();
+          else video.addEventListener('loadedmetadata', seek, { once: true });
+        }
+      })
+      .catch(() => {});
+  }
+
+  function bindProgressSave(video, rel) {
+    let lastSave = 0;
+    $('#resumeBar') && ($('#resumeBar').onclick = () => {
+      if (resumeTarget && rel === playingSrc) {
+        try { video.currentTime = resumeTarget; } catch (e) {}
+      }
+    });
+    video.addEventListener('timeupdate', () => {
+      if (!video.seekable || video.seeking) return;
+      const now = video.currentTime;
+      if (now - lastSave >= 5) { lastSave = now; saveProgress(rel, now); }
+      // tell server periodically even when seeking via UI
+    });
+    video.addEventListener('pause', () => saveProgress(rel, video.currentTime));
+    video.addEventListener('ended', () => {
+      clearProgress(rel);
+      toast('播放完成，进度已清除');
+    });
+    window.addEventListener('beforeunload', () => saveProgress(rel, video.currentTime), { once: false });
   }
 
   function showPlayer(rel, title) {
@@ -184,6 +360,13 @@
     video.playsInline = true;
     video.autoplay = true;
     host.appendChild(video);
+    subTracks = [];
+    resumeTarget = null;
+    resumePending = false;
+    $('#subMenu').innerHTML = '';
+    $('#subTools').style.display = 'flex';
+    bindProgressSave(video, rel);
+    fetchResume(rel, video);
     return video;
   }
 
@@ -201,6 +384,21 @@
     const ext = extName(rel);
     const src = '/api/stream/' + encodeRelPath(rel);
     const video = showPlayer(rel, title);
+    initSubMenu(video);
+    // auto-load sidecar subtitles from same dir
+    if (node && node.subtitles && node.subtitles.length) {
+      node.subtitles.forEach((s) => {
+        const t = document.createElement('track');
+        t.kind = 'subtitles';
+        t.label = (s.name || '').replace(/\.[^.]+$/, '');
+        t.srclang = 'und';
+        t.src = '/api/subtitle/' + encodeRelPath(s.path || rel);
+        video.appendChild(t);
+        subTracks.push({ label: t.label, el: t, local: false, lang: 'sidecar' });
+      });
+    }
+    refreshSubMenu(video);
+
     video.src = src;
     playingSrc = rel;
 
@@ -219,7 +417,6 @@
         }
       });
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      // Safari native HLS
       video.src = src;
     }
 
